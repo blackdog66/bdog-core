@@ -1,5 +1,5 @@
 package bdog;
-// test submodule change
+// test submodule change - 2
 
 import bdog.Os;
 import bdog.Tokenizer;
