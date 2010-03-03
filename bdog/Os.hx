@@ -28,6 +28,13 @@ enum Answer {
   Always;
 }
 
+enum PathPart {
+  EXT;
+  NAME;
+  FILE;
+  DIR;
+}
+
 class Os {
 
   public static var separator:String;
@@ -204,6 +211,17 @@ class Os {
   command(command:String,?ctx:Dynamic) {
     var a = getShellParameters(command,ctx);
     return Sys.command(a.shift(),a);
+  }
+
+  public static function
+  path(dir:String,part:PathPart) {
+    var p = new Path(dir);
+    return switch(part) {
+    case EXT: p.ext;
+    case NAME: p.file;
+    case DIR: p.dir;
+    case FILE: p.file + "." + p.ext;
+    }
   }
   
   public static function
