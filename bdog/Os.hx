@@ -33,6 +33,7 @@ enum PathPart {
   NAME;
   FILE;
   DIR;
+  PARENT;
 }
 
 class Os {
@@ -63,8 +64,17 @@ class Os {
     return StringTools.endsWith(d,separator) ? d : (d + separator) ;
   }
   
-  public static function
+  public static inline function
   print(s:String) {
+#if (neko || php)
+    Lib.print(s);
+#elseif nodejs
+    Node.sys.puts(s);
+#end
+  }
+
+  public static inline function
+  println(s:String) {
 #if (neko || php)
     Lib.println(s);
 #elseif nodejs
@@ -72,6 +82,7 @@ class Os {
 #end
   }
 
+  
   #if neko
 
   public static function
@@ -124,20 +135,27 @@ class Os {
   public static function
   mkdir(path:String) {
     if (FileSystem.exists(path)) return;
+
+    #if php
+    untyped __php__('@mkdir($path, 0777,true);');
+    #else
     
     var p = path.split(separator);
-    var cur = p.splice(0,2);
+    var cur = p.splice(0,2),
+      mydir = null;
     try	{
       while(true) {
-        var dir = cur.join(separator);
-        if (!FileSystem.exists(dir))
-          FileSystem.createDirectory(dir);
+        mydir = cur.join(separator) + separator;
+        if (!FileSystem.exists(mydir))
+          FileSystem.createDirectory(mydir);
         if (p.length == 0) break;
         cur.push(p.shift());
       }
     } catch(exc:Dynamic) {
-      trace("mkdir: problem with:"+path);
+      trace(exc);
+      trace("MKDIR: problem with:"+mydir);
     }
+    #end
   }
 
   public static function
@@ -163,9 +181,14 @@ class Os {
     FileSystem.deleteDirectory(dir);
   }
 
-  public static function
+  public static inline function
   mv(file:String,dst:String) {
+    try {
     FileSystem.rename(file,dst);
+    } catch(ex:Dynamic) {
+      trace("error copying "+file+" to "+dst);
+      throw ex;
+    }
   }
   
   public static function
@@ -221,6 +244,7 @@ class Os {
     case NAME: p.file;
     case DIR: p.dir;
     case FILE: p.file + "." + p.ext;
+    case PARENT: Os.path(p.dir,DIR);
     }
   }
   
@@ -265,7 +289,16 @@ class Os {
   
   private static function
   readTree(dir:String,files:List<String>,?exclude:String->Bool) {
-    var dirContent = FileSystem.readDirectory(dir);
+    var dirContent = null;
+    
+    try {
+     dirContent = FileSystem.readDirectory(dir);
+    }catch(ex:Dynamic) {
+      trace("Exception reading directory "+dir);
+    }
+    
+    if (dirContent == null) new List() ;
+      
     for (f in dirContent) {
       if (exclude != null) {
         if (exclude(f)) {
@@ -362,12 +395,12 @@ class Os {
       }
 
       if( file == "" ) {
-        if( path != "" ) print("  Created "+path);
+        if( path != "" ) println("  Created "+path);
         continue; // was just a directory
       }
 
       path += file;
-      print("  Install "+path);
+      println("  Install "+path);
       var data = neko.zip.Reader.unzip(zipfile);
       var f = neko.io.File.write(destination+path,true);
       f.write(data);
@@ -410,9 +443,9 @@ class Os {
   ask( question,always=false ) {
     while( true ) {
       if(always)
-        neko.Lib.print(question+" [y/n/a] ? ");
+        Os.print(question+" [y/n/a] ? ");
       else
-        neko.Lib.print(question+" [y/n] ? ");
+        Os.print(question+" [y/n] ? ");
 
       var a = switch( neko.io.File.stdin().readLine() ) {
       case "n":  No;
