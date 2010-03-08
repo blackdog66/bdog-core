@@ -163,7 +163,7 @@ class Tokenizer<T> {
     if (isNL(nc)) {
         
 #if debug
-        Os.print(">>"+":"+lineNo+"("+curChar+"): "+curLine.toString()+"<");
+        Os.println(">>"+":"+lineNo+"("+curChar+"): "+curLine.toString()+"<");
         curLine = new StringBuf();
 #end
         lineStart = curChar + 1;
@@ -290,7 +290,7 @@ class Tokenizer<T> {
   
   public function
   syntax(msg:String) {
-    Os.print("At line "+lineNo+" col "+column()+": "+msg);
+    Os.println("At line "+lineNo+" col "+column()+": "+msg);
     Os.exit(1);
   }
 }

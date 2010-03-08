@@ -96,7 +96,7 @@ class JSON {
   static inline function
   expecting(t:TType,g:TType) {
     if (t != g) {
-      Os.print("expecting " +t + " got "+g);
+      Os.println("expecting " +t + " got "+g);
       Os.exit(1);
     }
   }
