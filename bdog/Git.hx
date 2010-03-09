@@ -34,7 +34,7 @@ class Git {
   }
 
   public function
-  inRepo(f:Void->Dynamic) {
+  inRepo(f:Void->Dynamic):Dynamic {
     Os.cd(dir);
     var o = f();
     Os.cdpop();
@@ -52,7 +52,7 @@ class Git {
   public function
   tag(name:String) {
     inRepo(function() {
-        Os.process('git tag '+name);
+        Os.process('git tag -f -a -m '+name+' '+name);
       });
   }
 
@@ -63,13 +63,20 @@ class Git {
       });
   }
 
+  public function
+  describe() {
+    return inRepo(function() {        
+        return Os.process("git describe");
+      });
+  }
+
   static function
   parseLog(l:String) {
     var tk = new Tokenizer<TLog>(new StringReader(l));
     tk.match(~/^commit\s(.*?)\n/,function(re) { return TCommit(re.matched(1)); })
       .match(~/^Author:(.*?)\n/,function(re) {return TAuthor(re.matched(1)); })
       .match(~/^Date:(.*?)\n/,function(re) {return TDate(re.matched(1)); })
-      .match(~/^\n(.*?)\n\n/s,function(re) {return TComment(re.matched(1)); });
+      .match(~/^\n(.+)\n{0,2}/,function(re) {return TComment(re.matched(1)); });
     var
       state:Int = 0,
       a:Array<LogEntry> = new Array(),
@@ -90,6 +97,9 @@ class Git {
         state = 0;
       }
     }
+    
+    if (state == 4) a.push(tmp);
+    
     return a;
   }
   
@@ -101,10 +111,10 @@ class Git {
   }
 
   public function
-  archive(name:String,commit:String,outputDir:String) {
+  archive(name:String,outputDir:String,version:String) {
     return inRepo(function() {
-        var n = Os.slash(outputDir)+name+"-"+commit+".zip";
-        return Os.process("git archive --format=zip --output "+n+" "+commit);
+        var n = Os.slash(outputDir)+name;
+        return Os.process("git archive --format=zip --output "+n+" "+version);
       });
   }
 }
