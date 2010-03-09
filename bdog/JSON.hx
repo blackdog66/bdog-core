@@ -163,7 +163,7 @@ class JSON {
   private static function getClass(c:Class<Dynamic>,value:Dynamic) {
     return switch( #if neko Type.getClassName(c) #else c #end ) {
       case #if neko 'String' #else cast String #end:
-        '"'+value+'"';
+        escapeString(value);
       case #if neko 'Array' #else cast Array #end:
         arrayToString(value);
       case #if neko 'List' #else cast List #end,#if neko 'IntHash' #else cast IntHash #end:
