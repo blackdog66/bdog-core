@@ -4,6 +4,7 @@ package bdog;
 import bdog.Os;
 import bdog.Tokenizer;
 import bdog.Reader;
+import bdog.Log;
 
 enum TLog {
   TCommit(id:String);
@@ -16,12 +17,14 @@ typedef LogEntry = {
   var commit:String;
   var author:String;
   var date:String;
+  var version:String;
   var comment:String;
 }
   
 class Git {
 
   public var dir(default,null):String;
+  static var reVer = ~/\(tag:\s([^,)]+)/;
   
   public function new(d:String) {
     dir = Os.slash(d);
@@ -73,32 +76,41 @@ class Git {
   static function
   parseLog(l:String) {
     var tk = new Tokenizer<TLog>(new StringReader(l));
-    tk.match(~/^commit\s(.*?)\n/,function(re) { return TCommit(re.matched(1)); })
+    tk.match(~/^\s?commit\s(.*?)\n/,function(re) { return TCommit(re.matched(1)); })
       .match(~/^Author:(.*?)\n/,function(re) {return TAuthor(re.matched(1)); })
       .match(~/^Date:(.*?)\n/,function(re) {return TDate(re.matched(1)); })
-      .match(~/^\n(.+)\n{0,2}/,function(re) {return TComment(re.matched(1)); });
+      .match(~/^\n(.+)\n{1,2}/,function(re) {return TComment(re.matched(1)); });
     var
       state:Int = 0,
       a:Array<LogEntry> = new Array(),
       tok:TLog,
-      tmp:LogEntry = { commit:null, author:null, date: null, comment:null };
+      tmp:LogEntry = { commit:null, author:null, date: null,
+                       comment:null,version:null };
     
     while((tok = tk.nextToken()) != null) {
       switch (tok) {
-      case TCommit(c): tmp.commit = StringTools.trim(c);
+      case TCommit(c):
+        if (reVer.match(c)) {
+          tmp.version = Os.path(reVer.matched(1),FILE);
+          tmp.commit = StringTools.trim(reVer.matchedLeft());
+        } else {
+          tmp.commit = StringTools.trim(c);
+          tmp.version = "None";
+        }
       case TAuthor(a):tmp.author = StringTools.trim(a);
       case TDate(d):tmp.date = StringTools.trim(d);
-      case TComment(c): tmp.comment = StringTools.trim(c);
+      case TComment(c):
+        tmp.comment = StringTools.trim(c);
       }
       state++;
-      if (state == 4) {
+      if (state == 4 && tmp.version != "None") {
         a.push(tmp);
-        tmp = { commit:null, author:null, date: null, comment:null };
+        tmp = { commit:null, author:null, date: null, comment:null,version:null };
         state = 0;
       }
     }
-    
-    if (state == 4) a.push(tmp);
+
+    if (state == 3 && tmp.version != "None") a.push(tmp);
     
     return a;
   }
@@ -106,7 +118,7 @@ class Git {
   public function
   log():Array<LogEntry> {
     return inRepo(function() {
-        return parseLog(Os.process("git log"));
+        return parseLog(Os.process("git log --decorate"));
       });
   }
 
