@@ -87,7 +87,7 @@ class SMachine<S,E> {
 
     for (ev in getArray(e)) {
       var tID = transID(s,ev);
-      if (actions.exists(tID)) Os.print("Warning: Overwriting "+tID);
+      if (actions.exists(tID)) Os.println("Warning: Overwriting "+tID);
       actions.set(tID,{fn:f,type:(Std.is(e,Array)) ? ByEnum : ByName});
     }
     
@@ -101,7 +101,7 @@ class SMachine<S,E> {
 
     for (ev in getArray(e)) {
       var sID = stateID(e);
-      if (actions.exists(sID)) Os.print("Warning: Overwriting event "+sID);
+      if (actions.exists(sID)) Os.println("Warning: Overwriting event "+sID);
       actions.set(sID,{fn:f,type:(Std.is(e,Array)) ? ByEnum : ByName});
     }
     

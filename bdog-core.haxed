@@ -1,0 +1,18 @@
+
+---
+project:            
+    website:            http://blackdog66.wordpress.com
+    description:        Blackdog's core utilities.
+                        There's no build as these are used as a library only.
+    author:             blackdog
+    author-email:       blackdog66@gmail.com
+    tags:               utilities
+    license:            GPL
+    version:            0.1
+    comments:           first
+
+---
+   
+pack:
+        include:        ./
+    

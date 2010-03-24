@@ -8,9 +8,8 @@ class Log {
 	static var logFile = "default";
 	static var logDir ;
 
-	public static
-	function setDirFile(dir:String,lf:String) {
-//		trace("making dir "+dir);
+  
+	public function new(dir:String,lf:String) {
 		bdog.Os.mkdir(dir);
 		logDir = dir;
 		logFile = lf;
@@ -35,7 +34,7 @@ class Log {
 				f.close();
 			}
 
-			if (!logs.exists(logFile)) {
+			if (!logs.exists(lf)) {
 				log = neko.io.File.append(lf,false);
 				logs.set(logFile,log);
 			} else
