@@ -17,7 +17,10 @@ import neko.io.Path;
 import neko.Lib;
 import neko.zip.Reader;
 #elseif nodejs
-import bdog.nodejs.Node;
+import js.Sys;
+import js.FileSystem;
+import js.Lib
+import js.Node;
 #end
 
 using StringTools;
@@ -26,6 +29,14 @@ enum Answer {
   Yes;
   No;
   Always;
+}
+
+enum PathPart {
+  EXT;
+  NAME;
+  FILE;
+  DIR;
+  PARENT;
 }
 
 class Os {
@@ -56,43 +67,35 @@ class Os {
     return StringTools.endsWith(d,separator) ? d : (d + separator) ;
   }
   
-  public static function
+  public static inline function
   print(s:String) {
-#if (neko || php)
-    Lib.println(s);
-#elseif nodejs
-    Node.sys.puts(s);
-#end
+    Lib.print(s);
   }
 
-  #if neko
-
-  public static function
-  env(n:String) {
-    return neko.Sys.getEnv(n);
+  public static inline function
+  println(s:String) {
+    Lib.println(s);
   }
   
-  #end
-
+  public static inline function
+  env(n:String) {
+    return Sys.getEnv(n);
+  }
   
   public static function
   exit(c:Int) {
-#if neko
-    neko.Sys.exit(c);
-#elseif nodejs
-    Node.process.exit(c);
-#end
+    #if !php
+    Sys.exit(c);
+    #end
   }
 
-#if (neko || php)
-
-  public static
+  public static inline
   function args(p:Int):String {
     return Sys.args()[p];
   }
   
   public static function
-  safeDir( dir ) {
+  safeDir(dir:String) {
     if( FileSystem.exists(dir) ) {
      if( !FileSystem.isDirectory(dir) )
         throw ("A file is preventing "+dir+" to be created");
@@ -117,23 +120,32 @@ class Os {
   public static function
   mkdir(path:String) {
     if (FileSystem.exists(path)) return;
+
+    #if php
+    untyped __php__('@mkdir($path, 0777,true);');
+    #else
     
-    var p = path.split(separator);
-    var cur = p.splice(0,2);
+    var
+      p = path.split(separator),
+      cur = p.splice(0,2),
+      mydir = null;
+    
     try	{
       while(true) {
-        var dir = cur.join(separator);
-        if (!FileSystem.exists(dir))
-          FileSystem.createDirectory(dir);
+        mydir = cur.join(separator) + separator;
+        if (!FileSystem.exists(mydir))
+          FileSystem.createDirectory(mydir);
         if (p.length == 0) break;
         cur.push(p.shift());
       }
     } catch(exc:Dynamic) {
-      trace("mkdir: problem with:"+path);
+      trace(exc);
+      trace("MKDIR: problem with:"+mydir);
     }
+    #end
   }
 
-  public static function
+  public static inline function
   rm(f:String) {
     FileSystem.deleteFile(f);
   } 
@@ -156,9 +168,14 @@ class Os {
     FileSystem.deleteDirectory(dir);
   }
 
-  public static function
+  public static inline function
   mv(file:String,dst:String) {
+    try {
     FileSystem.rename(file,dst);
+    } catch(ex:Dynamic) {
+      trace("error copying "+file+" to "+dst);
+      throw ex;
+    }
   }
   
   public static function
@@ -201,9 +218,15 @@ class Os {
   }
 
   public static function
-  command(command:String,?ctx:Dynamic) {
-    var a = getShellParameters(command,ctx);
-    return Sys.command(a.shift(),a);
+  path(dir:String,part:PathPart) {
+    var p = new Path(dir);
+    return switch(part) {
+    case EXT: p.ext;
+    case NAME: p.file;
+    case DIR: p.dir;
+    case FILE: p.file + "." + p.ext;
+    case PARENT: Os.path(p.dir,DIR);
+    }
   }
   
   public static function
@@ -247,7 +270,16 @@ class Os {
   
   private static function
   readTree(dir:String,files:List<String>,?exclude:String->Bool) {
-    var dirContent = FileSystem.readDirectory(dir);
+    var dirContent = null;
+    
+    try {
+     dirContent = FileSystem.readDirectory(dir);
+    }catch(ex:Dynamic) {
+      trace("Exception reading directory "+dir);
+    }
+    
+    if (dirContent == null) new List() ;
+      
     for (f in dirContent) {
       if (exclude != null) {
         if (exclude(f)) {
@@ -295,7 +327,8 @@ class Os {
       });
   }
 
-  #if neko
+#if neko
+
   public static function
   zip(fn:String,files:List<String>,root:String) {
     var
@@ -344,12 +377,12 @@ class Os {
       }
 
       if( file == "" ) {
-        if( path != "" ) print("  Created "+path);
+        if( path != "" ) println("  Created "+path);
         continue; // was just a directory
       }
 
       path += file;
-      print("  Install "+path);
+      println("  Install "+path);
       var data = neko.zip.Reader.unzip(zipfile);
       var f = neko.io.File.write(destination+path,true);
       f.write(data);
@@ -392,9 +425,9 @@ class Os {
   ask( question,always=false ) {
     while( true ) {
       if(always)
-        neko.Lib.print(question+" [y/n/a] ? ");
+        Os.print(question+" [y/n/a] ? ");
       else
-        neko.Lib.print(question+" [y/n] ? ");
+        Os.print(question+" [y/n] ? ");
 
       var a = switch( neko.io.File.stdin().readLine() ) {
       case "n":  No;
@@ -408,8 +441,10 @@ class Os {
     }
     return null;
   }
+
+#end
   
-  #end
+#if (neko || php) 
 
   public static function
   process(command:String,throwOnError=true,?ctx:Dynamic):String {
@@ -428,6 +463,58 @@ class Os {
     return StringTools.trim(p.stdout.readAll().toString());
   }
 
+  public static function
+  command(command:String,?ctx:Dynamic) {
+    var a = getShellParameters(command,ctx);
+    return Sys.command(a.shift(),a);
+  }
+
+#elseif nodejs
+  
+  public static function
+  process(command:String,throwOnError=true,?ctx:Dynamic,fn:String->Void){
+    command = (ctx != null) ? template(command,ctx) : command;
+    var a = escapeArgument(command,ctx);
+    #if debug
+    trace(a);
+    #end
+    Node.sys.exec(a,function(err,stdout,stderr) {
+        if( err.code != 0) {
+          if (throwOnError)
+            throw stderr;
+          else
+            fn(StringTools.trim(stdout));
+        }
+      });
+  }
+      
+
+  public static function
+  command(command:String,?ctx:Dynamic) {
+    command = (ctx != null) ? template(command,ctx) : command;
+    var a = escapeArgument(command,ctx);
+    Node.sys.exec(a,function(err,stdout,stderr) {
+        fn(StringTools.trim(stdout));
+      });
+  }
+
+#end  
+
+  public static function
+  escapeArgument( arg : String ) : String {
+    
+    var ok = true;
+    for( i in 0...arg.length )
+      switch( arg.charCodeAt(i) ) {
+      case 32, 34: // [space] "
+        ok = false;
+      case 0, 13, 10: // [eof] [cr] [lf]
+        arg = arg.substr(0,i);
+      }
+    if( ok )
+      return arg;
+    return '"'+arg.split('"').join('\\"')+'"';
+  }
   
   public static function
   log(msg) {
@@ -473,6 +560,5 @@ class Os {
         
     return a;
   }
-  #end
    
 }
