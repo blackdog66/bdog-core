@@ -8,10 +8,6 @@ import haxe.rtti.CType;
   tweaking arrays to be arrays of objects (rather than classes) and enums to be
   string constructors. 
 
-  mid = MongoDB.ID(o);
-
-    if (mid != null) Reflect.setField(newObj,"_id",mid);
-
 */
 
 class Serialize {
@@ -101,7 +97,10 @@ class Serialize {
       switch(kls) {
       case "String","Float","Int":
 
-        Reflect.setField(newObj,name,val);
+        if (name != "_id")
+          Reflect.setField(newObj,name,val);
+        else
+          Reflect.setField(newObj,name,Std.string(val));
       
       case "Array":
         var
