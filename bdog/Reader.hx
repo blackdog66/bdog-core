@@ -3,14 +3,6 @@ package bdog;
 import Type;
 import bdog.Os;
 
-#if neko
-import neko.io.File;
-import neko.io.FileInput;
-#elseif php
-import php.io.File;
-import php.io.FileInput;
-#end
-
 using StringTools;
 
 interface Reader {

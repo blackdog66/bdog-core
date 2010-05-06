@@ -8,6 +8,7 @@ import php.io.File;
 import php.io.Path;
 import php.Lib;
 import php.io.Process;
+import bdog.JSON;
 #elseif neko
 import neko.Sys;
 import neko.FileSystem;
@@ -15,11 +16,12 @@ import neko.io.File;
 import neko.io.Process;
 import neko.io.Path;
 import neko.Lib;
-import neko.zip.Reader;
+import bdog.JSON;
 #elseif nodejs
 import js.Sys;
 import js.FileSystem;
-import js.Lib
+import js.io.File;
+import js.Lib;
 import js.Node;
 #end
 
@@ -39,34 +41,24 @@ enum PathPart {
   PARENT;
 }
 
-class Os {
-
-  public static var separator:String;
-  static var mycwd:Array<String> = new Array();
-  
-  public static function __init__() {
-	#if (neko || php)
-    separator = (Sys.systemName() == "Windows" ) ? "\\" : "/";
-    #else
-    separator = "\\";
-    #end
-  }
+class Os  {
 
   public static function
-  textToArray(text:String,delimiter='\n'):Array<String> {
-    var ar = text.split(delimiter),
-      lastEl = ar.pop();
-    if (StringTools.trim(lastEl) == "")
-      return ar;
-    ar.push(lastEl) ;
-    return ar;
+  template(s:String,ctx:Dynamic) {
+    var tmpl = new haxe.Template(s) ;
+    return tmpl.execute(ctx);
   }
 
-  public static inline function
-  slash(d:String) {
-    return StringTools.endsWith(d,separator) ? d : (d + separator) ;
-  }
+
+#if (js && !nodejs)
+  // any javascript not associated with node ...
+
+#else
+
+  // any server platform
   
+  public static var separator:String;
+
   public static inline function
   print(s:String) {
     Lib.print(s);
@@ -77,27 +69,25 @@ class Os {
     Lib.println(s);
   }
   
-  public static inline function
-  env(n:String) {
-    return Sys.getEnv(n);
-  }
+  // File system tools ...
   
-  public static function
-  exit(c:Int) {
-    #if !php
-    Sys.exit(c);
+  public static function __init__() {
+	#if (neko || php || nodejs)
+    separator = (Sys.systemName() == "Windows" ) ? "\\" : "/";
+    #else
+    separator = "\\";
     #end
   }
 
-  public static inline
-  function args(p:Int):String {
-    return Sys.args()[p];
+  public static inline function
+  slash(d:String) {
+    return StringTools.endsWith(d,separator) ? d : (d + separator) ;
   }
-  
+      
   public static function
   safeDir(dir:String) {
-    if( FileSystem.exists(dir) ) {
-     if( !FileSystem.isDirectory(dir) )
+    if(FileSystem.exists(dir) ) {
+     if(!FileSystem.isDirectory(dir) )
         throw ("A file is preventing "+dir+" to be created");
       return false;
     }
@@ -112,7 +102,8 @@ class Os {
   public static function
   newer(src:String,dst:String) {
     if (!exists(dst)) return true;
-    var s = FileSystem.stat(src),
+    var
+      s = FileSystem.stat(src),
       d = FileSystem.stat(dst);
     return (s.mtime.getTime() > d.mtime.getTime()) ;
   }
@@ -163,7 +154,7 @@ class Os {
       if( FileSystem.isDirectory(path) )
         rmdir(path);
       else
-        Os.rm(path);
+        rm(path);
     }
     FileSystem.deleteDirectory(dir);
   }
@@ -171,15 +162,24 @@ class Os {
   public static inline function
   mv(file:String,dst:String) {
     try {
-    FileSystem.rename(file,dst);
+      FileSystem.rename(file,dst);
     } catch(ex:Dynamic) {
       trace("error copying "+file+" to "+dst);
       throw ex;
     }
   }
-  
+
   public static function
-  fileOut(file:String,s:String,?ctx:Dynamic) {
+  read(file:String,?ctx:Dynamic) {
+    var contents ;
+    contents = File.getContent(file);
+    return (ctx != null)
+      ? template(contents,ctx)
+      : contents;
+  }
+
+  public static function
+  write(file:String,s:String,?ctx:Dynamic) {
     var f = File.write(file,false) ;
     try {
       f.writeString((ctx != null) ? template(s,ctx) : s);
@@ -191,7 +191,7 @@ class Os {
   }
 
   public static function
-  fileAppend(file:String,s:String,?ctx:Dynamic) {
+  append(file:String,s:String,?ctx:Dynamic) {
     var f = File.append(file,false) ;
     try {
       f.writeString((ctx != null) ? template(s,ctx) : s);
@@ -201,37 +201,32 @@ class Os {
       throw exc;
     }
   }
-
-  public static function
-  fileIn(file:String,?ctx:Dynamic) {
-    var contents ;
-    contents = File.getContent(file);
-    return (ctx != null)
-      ? template(contents,ctx)
-      : contents;
-  }
   
   public static function
-  template(s:String,ctx:Dynamic) {
-    var tmpl = new haxe.Template(s) ;
-    return tmpl.execute(ctx);
-  }
-
-  public static function
   path(dir:String,part:PathPart) {
+#if !nodejs
     var p = new Path(dir);
     return switch(part) {
     case EXT: p.ext;
     case NAME: p.file;
     case DIR: p.dir;
     case FILE: p.file + "." + p.ext;
-    case PARENT: Os.path(p.dir,DIR);
+    case PARENT: path(p.dir,DIR);
     }
+#else
+    var p = Node.path;
+    return switch(part) {
+    case EXT: p.extname(dir);
+    case FILE: p.basename(dir);
+    case DIR: p.dirname(dir);
+    case NAME: p.basename(dir,p.extname(dir));
+    case PARENT: path(p.dirname(dir),DIR);
+    }
+#end
   }
   
   public static function
   cd(path:String) {
-    mycwd.push(Sys.getCwd()) ;
     Sys.setCwd(path);
   }
 
@@ -240,18 +235,6 @@ class Os {
     return Sys.getCwd();
   }
 
-  public static function
-  cdpop() {
-    var d = mycwd.pop();
-    try {
-      Sys.setCwd(d);
-      //Log.tr("cdpop: "+d);
-    } catch(exc:Dynamic) {
-      trace("cdpop:"+exc);
-    }
-    return d;
-  }
-  
   public static inline function
   exists(f:String) {
     return FileSystem.exists(f);
@@ -271,6 +254,8 @@ class Os {
   private static function
   readTree(dir:String,files:List<String>,?exclude:String->Bool) {
     var dirContent = null;
+
+    if (!FileSystem.isDirectory(dir)) throw dir + " is not a directory";
     
     try {
      dirContent = FileSystem.readDirectory(dir);
@@ -313,113 +298,118 @@ class Os {
   }
   
   public static function
-  copyTree(src:String,dst:String,?exclude:String->Bool):Void {    
-    var stemLen = StringTools.endsWith(src,separator) ? src.length 
-      :Path.directory(src).length,                    
-      files = Os.files(src,exclude);
+  copyTree(src:String,dst:String,?exclude:String->Bool):Void {
+    var
+      stemLen = StringTools.endsWith(src,separator) ? src.length : path(src,DIR).length, 
+      fls = files(src,exclude);
     
-    Lambda.iter(files,function(f) {
+    Lambda.iter(fls,function(f) {
         var
-          dFile = Path.withoutDirectory(f),
-          dDir = dst + Path.directory(f.substr(stemLen));
-        Os.mkdir(dDir);
+          dFile = path(f,FILE),
+          dDir = dst + path(f.substr(stemLen),DIR);
+        mkdir(dDir);
         File.copy(f,slash(dDir) +dFile) ;        
       });
   }
 
-#if neko
+  // Process tools ...
 
   public static function
-  zip(fn:String,files:List<String>,root:String) {
-    var
-      zf = neko.io.File.write(fn,true),
-      rootLen = root.length;
-
-    try {
-      var fl = new List<{fileTime : Date, fileName : String, data : haxe.io.Bytes}>();
-      for (f in files) {
-        if (f == "." || f == "..") continue;
-        var dt = FileSystem.stat(f);
-        fl.push({fileTime:dt.mtime,fileName:f.substr(rootLen),data:neko.io.File.getBytes(f)});
-      }
-      neko.zip.Writer.writeZip(zf,fl,1);
-    } catch(exc:Dynamic) {
-      trace("zip: problem "+exc) ;
-    }
-    zf.close();
-  }
-
-  public static function
-  readFromZip( zip : List<ZipEntry>, file:String ) {
-    for( entry in zip ) {
-      if(entry.fileName == file) {
-        return Reader.unzip(entry).toString();
-      }
-    }
-    return null;
-  }
-
-  public static function
-  unzip(zip:List<ZipEntry>,destination:String) {
-    for( zipfile in zip ) {
-      var n = zipfile.fileName;
-      if( n.charAt(0) == separator || n.charAt(0) == "\\" || n.split("..").length > 1 )
-        throw "Invalid filename : "+n;
-      var
-        dirs = ~/[\/\\]/g.split(n),
-        path = "",
-        file = dirs.pop();
-
-      for( d in dirs ) {
-        path += d;
-        Os.safeDir(destination+path);
-        path += separator;
-      }
-
-      if( file == "" ) {
-        if( path != "" ) println("  Created "+path);
-        continue; // was just a directory
-      }
-
-      path += file;
-      println("  Install "+path);
-      var data = neko.zip.Reader.unzip(zipfile);
-      var f = neko.io.File.write(destination+path,true);
-      f.write(data);
-      f.close();
-    }
+  env(n:String) {
+    return Sys.environment().get(n.trim());
   }
   
-  /* http multipart upload */
   public static function
-  filePost(filePath:String,dstUrl:String,binary:Bool,
-		params:Dynamic,fn:String->Void) {
-
-    if (!neko.FileSystem.exists(filePath))
-      throw "file not found";
-    
-    trace("filePost: "+filePath+" to "+dstUrl);
-    var req = new haxe.Http(dstUrl);
-    
-    var path = new neko.io.Path(filePath);
-    var stat = neko.FileSystem.stat(filePath);
-    req.fileTransfert("file",path.file+"."+path.ext,
-                      neko.io.File.read(filePath,binary),stat.size);
-    
-    if (params != null) {
-      var prms = Reflect.fields(params) ;
-      for (p in prms)
-        req.setParameter(p,Reflect.field(params,p));
-    }
-    
-    req.onData = function(j:String) {
-      if (fn != null)
-        fn(j);
-      else trace(j);
-    }
-    
-    req.request(true);
+  exit(c:Int) {
+    #if !php
+    Sys.exit(c);
+    #end
   }
+
+  public static inline
+  function args(p:Int):String {
+    return Sys.args()[p];
+  }
+  
+  public static function
+  process(command:String,throwOnError=true,?ctx:Dynamic,fn:String->Void) {    
+#if (!nodejs)
+    var
+      a = ~/\s+/g.split((ctx != null) ? template(command,ctx) : command),
+      cmd = a.shift().trim();
+   
+    if (a[a.length-1] == "") a.pop();
+ 
+    var  p = new Process(cmd,a);
+
+    if( p.exitCode() != 0) {
+      if (throwOnError)
+        throw p.stderr.readAll().toString();
+      else
+        fn(p.stderr.readAll().toString());
+    } else {
+      fn(p.stdout.readAll().toString());
+    }
+#else
+    Node.exec(command,null,function(err,stdout,stderr) {
+        if( err.code != 0) {
+          if (throwOnError)
+            throw stderr;
+          else
+            fn(stderr);
+        }
+        fn(stdout);
+      });
+#end
+ }
+
+  // for backwards compat
+#if (neko || php) 
+  public static function
+  processSync(command:String,throwOnError=true,?ctx:Dynamic) {
+    var
+      a = ~/\s+/g.split((ctx != null) ? template(command,ctx) : command),
+      cmd = a.shift().trim();
+    
+    var  p = new Process(cmd,a);
+
+    if( p.exitCode() != 0) {
+      if (throwOnError)
+        throw p.stderr.readAll().toString();
+      else
+        return p.stderr.readAll().toString();
+    } else {
+      return p.stdout.readAll().toString();
+    }
+ }
+#end
+  
+  public static function
+  command(command:String,?ctx:Dynamic,fn:Int->Void) {
+    var
+      a = ~/\s+/g.split((ctx != null) ? template(command,ctx) : command),
+      cmd = a.shift().trim();
+    
+#if !nodejs
+    var s = Sys.command(cmd,a);
+    fn(s);
+#else
+    Node.exec(cmd,null,function(err,stdout,stderr) {
+        if (err == null)
+          fn(0);
+        else
+          fn(err.code);
+      });
+#end
+  }
+  
+  public static function
+  log(msg,f="log.log") {
+    if (!exists(f)) write(f,"date:"+Date.now().toString());
+    append(f,msg+"\n");
+  }
+
+  #if neko
 
   public static function
   ask( question,always=false ) {
@@ -442,71 +432,18 @@ class Os {
     return null;
   }
 
+  #end
+    
 #end
   
-#if (neko || php) 
-
-  public static function
-  process(command:String,throwOnError=true,?ctx:Dynamic):String {
-    var a = getShellParameters(command,ctx);
-    #if debug
-    trace(a);
-    #end
-    var p = new Process(a.shift(),a);
-    if( p.exitCode() != 0) {
-      if (throwOnError)
-        throw p.stderr.readAll().toString();
-      else
-        return p.stderr.readAll().toString();
-    }
-    
-    return StringTools.trim(p.stdout.readAll().toString());
-  }
-
-  public static function
-  command(command:String,?ctx:Dynamic) {
-    var a = getShellParameters(command,ctx);
-    return Sys.command(a.shift(),a);
-  }
-
-#elseif nodejs
+   // Other ...
   
   public static function
-  process(command:String,throwOnError=true,?ctx:Dynamic,fn:String->Void){
-    command = (ctx != null) ? template(command,ctx) : command;
-    var a = escapeArgument(command,ctx);
-    #if debug
-    trace(a);
-    #end
-    Node.sys.exec(a,function(err,stdout,stderr) {
-        if( err.code != 0) {
-          if (throwOnError)
-            throw stderr;
-          else
-            fn(StringTools.trim(stdout));
-        }
-      });
-  }
-      
-
-  public static function
-  command(command:String,?ctx:Dynamic) {
-    command = (ctx != null) ? template(command,ctx) : command;
-    var a = escapeArgument(command,ctx);
-    Node.sys.exec(a,function(err,stdout,stderr) {
-        fn(StringTools.trim(stdout));
-      });
-  }
-
-#end  
-
-  public static function
-  escapeArgument( arg : String ) : String {
-    
+  escapeArgument( arg : String ) : String {    
     var ok = true;
     for( i in 0...arg.length )
       switch( arg.charCodeAt(i) ) {
-      case 32, 34: // [space] "
+      case 32, 34: // [space] 
         ok = false;
       case 0, 13, 10: // [eof] [cr] [lf]
         arg = arg.substr(0,i);
@@ -516,49 +453,6 @@ class Os {
     return '"'+arg.split('"').join('\\"')+'"';
   }
   
-  public static function
-  log(msg) {
-    var f = "haxed.log";
-    if (!Os.exists(f)) Os.fileOut(f,"date:"+Date.now().toString());
-    Os.fileAppend(f,msg+"\n");
-  }
-
-  static function
-  replaceQuotedSpace(s:String) {
-    var sb = new StringBuf(),
-      inString = false;
-    for (i in 0...s.length) {
-      var ch = s.charAt(i);
-      if (ch == '"') inString = ! inString;
-      if (inString && ch == ' ')
-        sb.add('^^^');
-      else
-        sb.add(ch);
-    }
-    if (inString) throw "convertQuote: irregular number of quotes";
-    return sb.toString();
-  }
-
-  static function
-  getShellParameters(command:String,?ctx:Dynamic) {
-    command = (ctx != null) ? template(command,ctx) : command;
-    command = replaceQuotedSpace(command.trim());
-    // make sure there's only one space between all items
-    var r = ~/\s+/g;
-    command = r.replace(command," ") ;
-    
-    var a = new Array<String>();
-    for (i in command.split(" ")) {
-      var s = StringTools.trim(i);
-      if (s.charAt(0) == '"' && s.charAt(s.length-1) == '"') {
-        s = StringTools.replace(s,'^^^',' ');
-        a.push(s.substr(1,s.length-2));
-      } else
-        a.push(s);
-      
-    }
-        
-    return a;
-  }
-   
 }
+
+
