@@ -8,6 +8,7 @@ import js.Node;
 import bdog.nodejs.HttpClient;
 #end
 
+
 class Http {
 
   public static function
@@ -48,7 +49,11 @@ class Http {
     }
 
     var h = new haxe.Http(path+qs);
+
+	#if js
     h.async = true;
+    #end
+    
     h.onData = fn;
 
     if (err != null)

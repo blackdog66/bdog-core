@@ -21,18 +21,20 @@ class ChatClient {
   var sessionID:String;
   var lastMessageTime:Float;
   var pollingErrors:Int;
+  var parted:Bool;
 
   public var events: {
-  		join:Event<Msg>,
-      	who:Event<Array<String>>,
-      	msg:Event<Msg>,
-      part:Event<Msg>,
-      pollErr:Event0
+  	join:Event<Msg>,
+	who:Event<Array<String>>,
+	msg:Event<Msg>,
+	part:Event<Msg>,
+	pollErr:Event0
   };
   
   public function new(host:String,port:Int) {
     path = "http://"+host+":"+port +"/chat/";
     lastMessageTime = 1;
+    parted = false;
     events = {
     	join:new Event<Msg>(),
         who:new Event<Array<String>>(),
@@ -88,6 +90,7 @@ class ChatClient {
     channel = chan;
     client("join",params({nick:nick}),function(o) {
         me.sessionID = Reflect.field(o,"id");
+        me.parted = false;
         fn(o);
       });
   }
@@ -108,20 +111,21 @@ class ChatClient {
   }
 
   public function
-  part() {
-    client("part",params(),null);
+  part(fn:Dynamic->Void) {
+    parted = true;
+    client("part",params(),fn);
   }
   
   public function
   poll() {
-    var
-      me = this;
-    
-    recv({since:lastMessageTime},function(data:Dynamic) {
-        if (data != null) {
-          me.handlePoll(data);
-        }
-      });
+    var me = this;
+    if (!parted) {
+      recv({since:lastMessageTime},function(data:Dynamic) {
+          if (data != null) {
+            me.handlePoll(data);
+          }
+        });
+    }
   }
 
   public function
@@ -133,6 +137,7 @@ class ChatClient {
       switch(m.type) {
       case "join": events.join.raise(m);
       case "msg": events.msg.raise(m);
+      case "part": events.part.raise(m);
       }
     }
     poll();

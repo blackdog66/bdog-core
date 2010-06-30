@@ -18,6 +18,7 @@ import neko.io.Path;
 import neko.Lib;
 import bdog.JSON;
 #elseif nodejs
+// this has to be used with the bdog-stdjs project
 import js.Sys;
 import js.FileSystem;
 import js.io.File;
